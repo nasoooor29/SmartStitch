@@ -152,14 +152,25 @@ class SmartStitch:
         self,
         images: list[pil.Image],
         settings: InMemoryStitchSettings,
+        progress_func: Callable[[int, int, str], None] | None = None,
     ) -> list[pil.Image]:
         self._validate_inmemory_settings(settings)
         if not images:
             raise ValueError("images must contain at least one PIL image")
 
+        total_steps = 4
+
+        def emit_progress(step: int, message: str):
+            if progress_func is not None:
+                progress_func(step, total_steps, message)
+
         working_images = [img.copy() for img in images]
         working_images = self._resize_images(working_images, settings.custom_width)
+        emit_progress(1, "Prepared images")
+
         combined_img = self._combine_images(working_images)
+        emit_progress(2, "Combined images")
+
         slice_points = self._detect_slice_points(
             combined_img=combined_img,
             split_height=settings.split_height,
@@ -168,7 +179,11 @@ class SmartStitch:
             ignorable_pixels=settings.ignorable_pixels,
             scan_step=settings.scan_line_step,
         )
-        return self._slice_image(combined_img, slice_points)
+        emit_progress(3, "Detected slice points")
+
+        sliced_images = self._slice_image(combined_img, slice_points)
+        emit_progress(4, "Generated output slices")
+        return sliced_images
 
     @staticmethod
     def _resize_images(images: list[pil.Image], custom_width: int) -> list[pil.Image]:
@@ -347,6 +362,7 @@ def run_images(
     detection_senstivity: int = 90,
     ignorable_pixels: int = 5,
     scan_line_step: int = 5,
+    progress_func: Callable[[int, int, str], None] | None = None,
 ) -> list[pil.Image]:
     settings = InMemoryStitchSettings(
         split_height=split_height,
@@ -356,7 +372,11 @@ def run_images(
         ignorable_pixels=ignorable_pixels,
         scan_line_step=scan_line_step,
     )
-    return SmartStitch().run_images(images=images, settings=settings)
+    return SmartStitch().run_images(
+        images=images,
+        settings=settings,
+        progress_func=progress_func,
+    )
 
 
 __all__ = [

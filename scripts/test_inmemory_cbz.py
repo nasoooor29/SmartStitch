@@ -4,6 +4,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from PIL import Image
+from tqdm import tqdm
 
 
 def _load_stitch_module():
@@ -48,7 +49,6 @@ def load_images_from_cbz(cbz_path: Path) -> list[Image.Image]:
             for name in archive.namelist()
             if name.lower().endswith(SUPPORTED_IMAGE_EXTENSIONS)
         )
-
         for entry in image_entries:
             data = archive.read(entry)
             with Image.open(BytesIO(data)) as source_image:
@@ -59,14 +59,34 @@ def load_images_from_cbz(cbz_path: Path) -> list[Image.Image]:
 
 def main() -> None:
     input_images = load_images_from_cbz(CBZ_PATH)
-    output_images = stitch.run_images(
-        images=input_images,
-        split_height=SPLIT_HEIGHT,
-        detection_type=DETECTION_TYPE,
-        detection_senstivity=DETECTION_SENSTIVITY,
-        ignorable_pixels=IGNORABLE_PIXELS,
-        scan_line_step=SCAN_LINE_STEP,
-    )
+
+    processing_bar = tqdm(total=4, desc="Processing images", unit="step")
+    progress_state = {"current": 0}
+
+    def on_progress(step: int, total: int, message: str) -> None:
+        if processing_bar.total != total:
+            processing_bar.total = total
+
+        completed = min(step, total)
+        delta = completed - progress_state["current"]
+        if delta > 0:
+            processing_bar.update(delta)
+            progress_state["current"] = completed
+
+        processing_bar.set_postfix_str(message)
+
+    try:
+        output_images = stitch.run_images(
+            images=input_images,
+            split_height=SPLIT_HEIGHT,
+            detection_type=DETECTION_TYPE,
+            detection_senstivity=DETECTION_SENSTIVITY,
+            ignorable_pixels=IGNORABLE_PIXELS,
+            scan_line_step=SCAN_LINE_STEP,
+            progress_func=on_progress,
+        )
+    finally:
+        processing_bar.close()
 
     print(f"input_images: {len(input_images)}")
     print(f"output_images: {len(output_images)}")
