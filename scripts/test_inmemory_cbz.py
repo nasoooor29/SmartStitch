@@ -1,24 +1,16 @@
 from io import BytesIO
-import importlib.util
 from pathlib import Path
+import sys
 from zipfile import ZipFile
 
 from PIL import Image
 from tqdm import tqdm
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-def _load_stitch_module():
-    repo_root = Path(__file__).resolve().parent.parent
-    module_path = repo_root / "SmartStitchLib.py"
-    spec = importlib.util.spec_from_file_location("SmartStitchLib", module_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load SmartStitchLib from: {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-stitch = _load_stitch_module()
+from SmartStitchLib import split_image
 
 CBZ_PATH = Path("inputs") / "Chapter 44.cbz"
 SPLIT_HEIGHT = 5000
@@ -59,34 +51,17 @@ def load_images_from_cbz(cbz_path: Path) -> list[Image.Image]:
 
 def main() -> None:
     input_images = load_images_from_cbz(CBZ_PATH)
-
-    processing_bar = tqdm(total=4, desc="Processing images", unit="step")
-    progress_state = {"current": 0}
-
-    def on_progress(step: int, total: int, message: str) -> None:
-        if processing_bar.total != total:
-            processing_bar.total = total
-
-        completed = min(step, total)
-        delta = completed - progress_state["current"]
-        if delta > 0:
-            processing_bar.update(delta)
-            progress_state["current"] = completed
-
-        processing_bar.set_postfix_str(message)
-
-    try:
-        output_images = stitch.run_images(
-            images=input_images,
+    output_images = []
+    for image in tqdm(input_images, desc="Processing images", unit="img"):
+        split_images = split_image(
+            image=image,
             split_height=SPLIT_HEIGHT,
             detection_type=DETECTION_TYPE,
             detection_senstivity=DETECTION_SENSTIVITY,
             ignorable_pixels=IGNORABLE_PIXELS,
             scan_line_step=SCAN_LINE_STEP,
-            progress_func=on_progress,
         )
-    finally:
-        processing_bar.close()
+        output_images.extend(split_images)
 
     print(f"input_images: {len(input_images)}")
     print(f"output_images: {len(output_images)}")
